@@ -434,6 +434,7 @@ minerLoop:
 					//	log.Errorf("failed to write db: %s", err)
 					//}
 
+					log.Infow("sync new block", "cid", bm.Cid(), "height", bm.Header.Height, "miner", bm.Header.Miner, "timestamp", bm.Header.Timestamp)
 					if err := m.api.SyncSubmitBlock(ctx, bm); err != nil {
 						log.Errorf("failed to submit newly mined block: %s", err)
 					}
