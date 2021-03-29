@@ -343,6 +343,80 @@ minerLoop:
 			}
 			tPending := build.Clock.Now()
 
+			// TODO: create block is placed at the PropagationDelaySecs from the end of the period, the purpose is to obtain all the base !!!
+			uts := base.TipSet.MinTimestamp() + build.BlockDelaySecs*(uint64(base.NullRounds)+1) - build.PropagationDelaySecs
+			btime := time.Unix(int64(uts), 0)
+			now := build.Clock.Now()
+			switch {
+			case btime == now:
+				// block timestamp is perfectly aligned with time.
+			case btime.After(now):
+				if !m.niceSleep(build.Clock.Until(btime)) {
+					log.Warnf("received interrupt while waiting to broadcast block, will shutdown after block is sent out")
+					build.Clock.Sleep(build.Clock.Until(btime))
+				}
+
+				// Reacquire base
+				base, err = m.GetBestMiningCandidate(ctx)
+				if err != nil {
+					log.Errorf("make another attempt to get best mining candidate failed: %s", err)
+					if !m.niceSleep(time.Second * 5) {
+						continue minerLoop
+					}
+					continue
+				}
+
+				if !base.TipSet.Equals(lastBase.TipSet) || lastBase.NullRounds != base.NullRounds {
+					log.Warn("base changed, recalculate ticket ......")
+					round := base.TipSet.Height() + base.NullRounds + 1
+					var (
+						wgRes sync.WaitGroup
+					)
+					for idx, res := range winPoSts {
+						tRes := res
+						tIdx := idx
+						wgRes.Add(1)
+						go func() {
+							defer wgRes.Done()
+
+							mbi, err := m.api.MinerGetBaseInfo(ctx, tRes.addr, round, base.TipSet.Key())
+							if err != nil {
+								log.Errorf("failed to get mining base info: %w, miner: %s", err, tRes.addr)
+								return
+							}
+
+							if mbi == nil {
+								log.Infow("get nil MinerGetBaseInfo", "miner", tRes.addr)
+								return
+							}
+							if !mbi.EligibleForMining {
+								// slashed or just have no power yet
+								log.Warnw("slashed or just have no power yet", "miner", tRes.addr)
+								return
+							}
+
+							beaconPrev := mbi.PrevBeaconEntry
+							bvals := mbi.BeaconEntries
+							rbase := beaconPrev
+							if len(bvals) > 0 {
+								rbase = bvals[len(bvals)-1]
+							}
+
+							ticket, err := m.computeTicket(ctx, &rbase, base, mbi, tRes.addr)
+							if err != nil {
+								log.Errorf("scratching ticket for %s failed: %w", tRes.addr, err)
+								return
+							}
+							winPoSts[tIdx].ticket = ticket
+						}()
+					}
+					wgRes.Wait()
+				}
+			default:
+				log.Warnw("mined block in the past",
+					"block-time", btime, "time", build.Clock.Now(), "difference", build.Clock.Since(btime))
+			}
+
 			// create blocks
 			var blks []*types.BlockMsg
 			for idx, res := range winPoSts {
@@ -387,8 +461,8 @@ minerLoop:
 				})
 			}
 
-			btime := time.Unix(int64(blks[0].Header.Timestamp), 0)
-			now := build.Clock.Now()
+			btime = time.Unix(int64(blks[0].Header.Timestamp), 0)
+			now = build.Clock.Now()
 			switch {
 			case btime == now:
 				// block timestamp is perfectly aligned with time.
@@ -434,6 +508,24 @@ minerLoop:
 						log.Errorf("failed to submit newly mined block: %s", err)
 					}
 				}(b)
+			}
+
+			// ToDo Under normal circumstances, when the block is created in a cycle,
+			// the block is broadcast at the time of (timestamp),
+			// and the latest block is often not received directly from the next round,
+			// resulting in  lastbase==base staying in the previous cycle,
+			// so that it will be broadcast again. Jump one cycle (L280), miss a cycle and possibly produce blocks.
+
+			nextRound := time.Unix(int64(blks[0].Header.Timestamp)+int64(build.PropagationDelaySecs), 0)
+
+			select {
+			case <-build.Clock.After(build.Clock.Until(nextRound)):
+			case <-m.stop:
+				stopping := m.stopping
+				m.stop = nil
+				m.stopping = nil
+				close(stopping)
+				return
 			}
 		} else {
 			base.NullRounds++
