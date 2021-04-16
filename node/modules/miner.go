@@ -19,10 +19,11 @@ func NewWiningPoster(lc fx.Lifecycle,
 	ds dtypes.MetadataDS,
 	verifier ffiwrapper.Verifier,
 	minerManager minermanage.MinerManageAPI,
+	miningStatistics minermanage.MiningStatisticsAPI,
 	j journal.Journal,
 	//blockRecord block_recorder.IBlockRecord
 ) (miner.MiningAPI, error) {
-	m := miner.NewMiner(api, verifier, minerManager, slashfilter.New(ds), j)
+	m := miner.NewMiner(api, verifier, minerManager, miningStatistics, slashfilter.New(ds), j)
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {

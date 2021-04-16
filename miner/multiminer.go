@@ -52,7 +52,7 @@ func randTimeOffset(width time.Duration) time.Duration {
 	return val - (width / 2)
 }
 
-func NewMiner(api api.FullNode, verifier ffiwrapper.Verifier, minerManager minermanage.MinerManageAPI,
+func NewMiner(api api.FullNode, verifier ffiwrapper.Verifier, minerManager minermanage.MinerManageAPI, miningStatistics minermanage.MiningStatisticsAPI,
 	sf *slashfilter.SlashFilter /*blockRecord block_recorder.IBlockRecord,*/, j journal.Journal) *Miner {
 	arc, err := lru.NewARC(10000)
 	if err != nil {
@@ -83,8 +83,9 @@ func NewMiner(api api.FullNode, verifier ffiwrapper.Verifier, minerManager miner
 		},
 		journal: j,
 
-		minerManager: minerManager,
-		minerWPPMap:  make(map[address.Address]*minerWPP),
+		minerManager:     minerManager,
+		miningStatistics: miningStatistics,
+		minerWPPMap:      make(map[address.Address]*minerWPP),
 
 		verifier: verifier,
 	}
@@ -123,9 +124,10 @@ type Miner struct {
 	evtTypes [1]journal.EventType
 	journal  journal.Journal
 
-	lkWPP        sync.Mutex
-	minerWPPMap  map[address.Address]*minerWPP
-	minerManager minermanage.MinerManageAPI
+	lkWPP            sync.Mutex
+	minerWPPMap      map[address.Address]*minerWPP
+	minerManager     minermanage.MinerManageAPI
+	miningStatistics minermanage.MiningStatisticsAPI
 
 	verifier ffiwrapper.Verifier
 
@@ -326,6 +328,14 @@ minerLoop:
 						} else if res.err != nil {
 							mining.err = res.err.Error()
 						}
+
+						if res.winner != nil {
+							err := m.miningStatistics.Put(res.addr, &dtypes.MiningRecord{Timestamp: base.TipSet.MinTimestamp() + build.BlockDelaySecs*(uint64(base.NullRounds)+1), Status: res.err == nil, Err: res.err.Error()}) //nolint
+							if err != nil {
+								log.Errorf("record mining error: %s", err.Error())
+							}
+						}
+
 					}
 				}()
 
@@ -627,14 +637,14 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase, addr address.Addr
 		buf := new(bytes.Buffer)
 		if err := addr.MarshalCBOR(buf); err != nil {
 			log.Errorf("failed to marshal miner address: %w", err)
-			out <- &winPoStRes{addr: addr, err: err}
+			out <- &winPoStRes{addr: addr, winner: winner, err: err}
 			return
 		}
 
 		r, err := chain.DrawRandomness(rbase.Data, crypto.DomainSeparationTag_WinningPoStChallengeSeed, round, buf.Bytes())
 		if err != nil {
 			log.Errorf("failed to get randomness for winning post: %w, miner: %s", err, addr)
-			out <- &winPoStRes{addr: addr, err: err}
+			out <- &winPoStRes{addr: addr, winner: winner, err: err}
 			return
 		}
 
@@ -645,7 +655,7 @@ func (m *Miner) mineOne(ctx context.Context, base *MiningBase, addr address.Addr
 		postProof, err := epp.ComputeProof(ctx, mbi.Sectors, prand)
 		if err != nil {
 			log.Errorf("failed to compute winning post proof: %w, miner: %s", err, addr)
-			out <- &winPoStRes{addr: addr, err: err}
+			out <- &winPoStRes{addr: addr, winner: winner, err: err}
 			return
 		}
 
@@ -842,16 +852,15 @@ func (m *Miner) UpdateAddress(minerInfo dtypes.MinerInfo) error {
 	return m.minerManager.Set(minerInfo)
 }
 
-func (m *Miner) RemoveAddress(addr address.Address) error {
+func (m *Miner) RemoveAddress(addrs []address.Address) error {
 	m.lkWPP.Lock()
 	defer m.lkWPP.Unlock()
-	if _, ok := m.minerWPPMap[addr]; ok {
-		delete(m.minerWPPMap, addr)
 
-		return m.minerManager.Remove(addr)
+	for _, addr := range addrs {
+		delete(m.minerWPPMap, addr)
 	}
 
-	return xerrors.Errorf("%s not exist", addr)
+	return m.minerManager.Remove(addrs)
 }
 
 func (m *Miner) ListAddress() ([]dtypes.MinerInfo, error) {

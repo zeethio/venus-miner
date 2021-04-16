@@ -38,6 +38,12 @@ type MinerState struct {
 	Err      string
 }
 
+type MiningRecord struct {
+	Timestamp uint64
+	Status    bool
+	Err       string
+}
+
 func (sn SealerNode) DialArgs() (string, error) {
 	ma, err := multiaddr.NewMultiaddr(sn.ListenAPI)
 	if err == nil {

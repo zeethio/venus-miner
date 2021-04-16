@@ -111,14 +111,12 @@ func Online() Option {
 		),
 
 		// miner
-		ApplyIf(isType(repo.Miner),
-
-		),
+		ApplyIf(isType(repo.Miner)),
 	)
 }
 
 // Config sets up constructors based on the provided Config
-func ConfigCommon( cfg *config.Common) Option {
+func ConfigCommon(cfg *config.Common) Option {
 	return Options(
 		func(s *Settings) error { s.Config = true; return nil },
 		Override(new(dtypes.APIEndpoint), func() (dtypes.APIEndpoint, error) {
@@ -195,6 +193,7 @@ func ConfigPostOptions(cctx *cli.Context, c interface{}) Option {
 		Override(new(*config.MinerConfig), scfg),
 
 		Override(new(minermanage.MinerManageAPI), minermanage.NewMinerManger),
+		Override(new(minermanage.MiningStatisticsAPI), minermanage.NewMiningStatistics),
 		Override(new(api.Common), From(new(common.CommonAPI))),
 		Override(new(ffiwrapper.Verifier), ffiwrapper.ProofVerifier),
 	)

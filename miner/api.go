@@ -25,7 +25,7 @@ type IMinerManager interface {
 	UpdateAddress(dtypes.MinerInfo) error
 	ListAddress() ([]dtypes.MinerInfo, error)
 	StatesForMining([]address.Address) ([]dtypes.MinerState, error)
-	RemoveAddress(address.Address) error
+	RemoveAddress([]address.Address) error
 }
 
 type MockMinerMgr struct {
@@ -49,6 +49,6 @@ func (m MockMinerMgr) StatesForMining([]address.Address) ([]dtypes.MinerState, e
 	return nil, nil
 }
 
-func (m MockMinerMgr) RemoveAddress(a address.Address) error {
+func (m MockMinerMgr) RemoveAddress([]address.Address) error {
 	return nil
 }

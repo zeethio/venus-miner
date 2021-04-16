@@ -223,7 +223,7 @@ var updateCmd = &cli.Command{
 var removeCmd = &cli.Command{
 	Name:      "rm",
 	Usage:     "remove the specified miner from the miners",
-	ArgsUsage: "[address]",
+	ArgsUsage: "[address ...]",
 	Flags:     []cli.Flag{},
 	Action: func(cctx *cli.Context) error {
 		postApi, closer, err := lcli.GetMinerAPI(cctx)
@@ -232,16 +232,21 @@ var removeCmd = &cli.Command{
 		}
 		defer closer()
 
-		minerAddr, err := address.NewFromString(cctx.Args().Get(0))
-		if err != nil {
-			return err
+		var addrs []address.Address
+		for i, s := range cctx.Args().Slice() {
+			minerAddr, err := address.NewFromString(s)
+			if err != nil {
+				return xerrors.Errorf("parsing %d-th miner: %w", i, err)
+			}
+
+			addrs = append(addrs, minerAddr)
 		}
-		err = postApi.RemoveAddress(minerAddr)
+		err = postApi.RemoveAddress(addrs)
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("remove miner: ", minerAddr)
+		fmt.Println("remove miner: ", addrs)
 		return nil
 	},
 }

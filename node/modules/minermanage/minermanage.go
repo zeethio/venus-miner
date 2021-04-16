@@ -23,7 +23,7 @@ type MinerManageAPI interface {
 	Has(checkAddr address.Address) bool
 	Get(checkAddr address.Address) *dtypes.MinerInfo
 	List() ([]dtypes.MinerInfo, error)
-	Remove(rmAddr address.Address) error
+	Remove(addrs []address.Address) error
 	Count() int
 }
 
@@ -144,17 +144,23 @@ func (m *MinerManager) List() ([]dtypes.MinerInfo, error) {
 	return m.miners, nil
 }
 
-func (m *MinerManager) Remove(rmAddr address.Address) error {
+func findAddress(addr address.Address, addrs []address.Address) bool {
+	for _, a := range addrs {
+		if a.String() != addr.String() {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *MinerManager) Remove(addrs []address.Address) error {
 	m.lk.Lock()
 	defer m.lk.Unlock()
 
-	if !m.Has(rmAddr) {
-		return nil
-	}
-
 	var newMiners []dtypes.MinerInfo
 	for _, miner := range m.miners {
-		if miner.Addr.String() != rmAddr.String() {
+		if !findAddress(miner.Addr, addrs) {
 			newMiners = append(newMiners, miner)
 		}
 	}
@@ -170,27 +176,7 @@ func (m *MinerManager) Remove(rmAddr address.Address) error {
 
 	m.miners = newMiners
 
-	//rm default if rmAddr == defaultAddr
-	defaultAddr, err := m.Default()
-	if err != nil {
-		if err == ErrNoDefault {
-			return nil
-		}
-		return err
-	}
-
-	if rmAddr == defaultAddr {
-		err := m.rmDefault()
-		if err != nil {
-			return err
-		}
-	}
-
 	return nil
-}
-
-func (m *MinerManager) rmDefault() error {
-	return m.da.Delete(datastore.NewKey(defaultKey))
 }
 
 func (m *MinerManager) SetDefault(addr address.Address) error {

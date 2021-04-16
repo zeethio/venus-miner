@@ -166,13 +166,14 @@ type MinerStruct struct {
 	CommonStruct
 
 	Internal struct {
-		AddAddress      func(dtypes.MinerInfo) error                         `perm:"write"`
-		UpdateAddress   func(dtypes.MinerInfo) error                         `perm:"write"`
-		RemoveAddress   func(address.Address) error                          `perm:"write"`
-		ListAddress     func() ([]dtypes.MinerInfo, error)                   `perm:"read"`
-		StatesForMining func([]address.Address) ([]dtypes.MinerState, error) `perm:"read"`
-		Start           func(context.Context, address.Address) error         `perm:"write"`
-		Stop            func(context.Context, address.Address) error         `perm:"write"`
+		AddAddress       func(dtypes.MinerInfo) error                         `perm:"write"`
+		UpdateAddress    func(dtypes.MinerInfo) error                         `perm:"write"`
+		RemoveAddress    func([]address.Address) error                        `perm:"write"`
+		ListAddress      func() ([]dtypes.MinerInfo, error)                   `perm:"read"`
+		StatesForMining  func([]address.Address) ([]dtypes.MinerState, error) `perm:"read"`
+		RecordsForMining func(address.Address) ([]dtypes.MiningRecord, error) `perm:"read"`
+		Start            func(context.Context, address.Address) error         `perm:"write"`
+		Stop             func(context.Context, address.Address) error         `perm:"write"`
 	}
 }
 
@@ -184,8 +185,8 @@ func (s *MinerStruct) UpdateAddress(miner dtypes.MinerInfo) error {
 	return s.Internal.UpdateAddress(miner)
 }
 
-func (s *MinerStruct) RemoveAddress(addr address.Address) error {
-	return s.Internal.RemoveAddress(addr)
+func (s *MinerStruct) RemoveAddress(addrs []address.Address) error {
+	return s.Internal.RemoveAddress(addrs)
 }
 
 func (s *MinerStruct) ListAddress() ([]dtypes.MinerInfo, error) {
@@ -194,6 +195,10 @@ func (s *MinerStruct) ListAddress() ([]dtypes.MinerInfo, error) {
 
 func (s *MinerStruct) StatesForMining(addrs []address.Address) ([]dtypes.MinerState, error) {
 	return s.Internal.StatesForMining(addrs)
+}
+
+func (s *MinerStruct) RecordsForMining(addr address.Address) ([]dtypes.MiningRecord, error) {
+	return s.Internal.RecordsForMining(addr)
 }
 
 func (s *MinerStruct) Start(ctx context.Context, addr address.Address) error {
